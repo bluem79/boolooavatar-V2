@@ -52,7 +52,13 @@ const NAMES={idle:'بیکار',talking:'حرف زدن',playing:'بازی',scream
 const FB={screaming:'talking',talking:'idle',playing:'idle'};
 const files={idle:[],talking:[],playing:[],screaming:[]},lastIdx={};
 let cur=null,playing=false,lvl=0,hold=0,scrHold=0,analyser=null,buf=null;
-let db=null;
+let db=null,ovr=false,ovrT=0;
+for(let i=0;i<5;i++)files['r'+i]=[];
+function endOvr(){clearTimeout(ovrT);ovr=false;cur=null}
+function playClip(i){const k='r'+i,a=files[k];if(!a||!a.length)return false;
+  let j=Math.floor(Math.random()*a.length);if(a.length>1&&j===lastIdx[k])j=(j+1+Math.floor(Math.random()*(a.length-1)))%a.length;
+  lastIdx[k]=j;const it=a[j];clearTimeout(ovrT);ovr=true;show(it,false);
+  ovrT=setTimeout(endOvr,it.v?30000:3000);$('badge').textContent='ریکشن';return true}
 const idb=(m,fn)=>new Promise(r=>{if(!db)return r();try{const t=db.transaction('f',m),q=fn(t.objectStore('f'));t.oncomplete=()=>r(q&&q.result);t.onerror=()=>r()}catch(e){r()}});
 const dbPut=o=>idb('readwrite',s=>s.put(o)),dbDel=id=>idb('readwrite',s=>s.delete(id)),dbAll=()=>idb('readonly',s=>s.getAll());
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -61,7 +67,7 @@ const im=$('im'),vd=$('vd'),ph=$('ph'),stage=$('stage'),av=$('av');
 const base=()=>playing?'playing':'idle';
 function pick(a){let i=Math.floor(Math.random()*a.length);if(a.length>1&&i===lastIdx[a]){}return i}
 function setState(s,force){
-  if(s===cur&&!force)return;cur=s;$('badge').textContent=NAMES[s];
+  if(ovr||!s||(s===cur&&!force))return;cur=s;$('badge').textContent=NAMES[s];
   let k=s;while(!files[k].length&&FB[k])k=FB[k];
   const pool=files[k];if(!pool.length){show(null);return}
   let i=Math.floor(Math.random()*pool.length);
@@ -74,11 +80,11 @@ function show(it,loop){
   if(it.v){im.style.display='none';vd.style.display='block';vd.loop=loop;vd.src=it.url;vd.play().catch(()=>{})}
   else{vd.pause();vd.style.display='none';im.style.display='block';im.src=it.url}
 }
-vd.onended=()=>setState(cur,true);
+vd.onended=()=>{if(ovr)endOvr();else setState(cur,true)};
 setInterval(()=>{if(im.style.display==='block')setState(cur,true)},6000);
 function render(){
   $('slots').innerHTML='';
-  STATES.forEach(([k,n,e])=>{
+  STATES.concat(REACTIONS?RX.map((r,i)=>['r'+i,'ریکشن '+(i+1)+' – کلیپ تمام‌اواتار',r[0]]):[]).forEach(([k,n,e])=>{
     const c=document.createElement('section');c.className='card';
     c.innerHTML=`<h3>${e} ${n} <small>${files[k].length}/5</small></h3><div class="th"></div><label class="btn" style="width:fit-content">＋ افزودن تصویر/ویدیو<input type="file" hidden multiple accept="image/*,video/*"></label>`;
     const th=c.querySelector('.th');
@@ -125,6 +131,7 @@ if(REACTIONS){
   buildRxBtns();
 }else{$('rx').remove();$('bw').remove()}
 function react(r){if(r.snd){const a=new Audio(r.snd);a.play().catch(()=>{})}
+  if(playClip(RX.indexOf(r)))return;
   for(let i=0;i<8;i++){const s=document.createElement(r.img?'img':'span');s.className='p';if(r.img)s.src=r.img;else s.textContent=r[0];
     s.style.left=(8+Math.random()*80)+'%';s.style.animationDelay=Math.random()*.4+'s';stage.append(s);setTimeout(()=>s.remove(),2400)}
   av.classList.remove('a-bounce','a-shake','a-pulse','a-zoom');void av.offsetWidth;av.classList.add(r[1]);
@@ -138,7 +145,7 @@ function renderRx(){
     const d=document.createElement('div');d.className='bar';
     d.innerHTML=`<b>${i+1}</b><input value="${r[0]}" maxlength="4" style="width:56px"><label class="btn">🖼️ ${r.img?'✓':'تصویر'}<input type="file" hidden accept="image/*"></label><label class="btn">🔊 ${r.snd?'✓':'صدا'}<input type="file" hidden accept="audio/*"></label><button>✕</button>`;
     const [t,fi,fs]=d.querySelectorAll('input'),x=d.querySelector('button');
-    t.oninput=()=>{r[0]=t.value||'⭐';try{localStorage.setItem('rxe',JSON.stringify(RX.map(q=>q[0])))}catch(e){}buildRxBtns()};
+    t.oninput=()=>{r[0]=t.value||'⭐';try{localStorage.setItem('rxe',JSON.stringify(RX.map(q=>q[0])))}catch(e){}buildRxBtns();render()};
     fi.onchange=()=>fi.files[0]&&setRx(i,'img',fi.files[0]);
     fs.onchange=()=>fs.files[0]&&setRx(i,'snd',fs.files[0]);
     x.onclick=()=>{['img','snd'].forEach(u=>{if(r[u]){URL.revokeObjectURL(r[u]);r[u]=null;dbDel('rx'+u+i)}});renderRx()};
